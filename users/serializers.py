@@ -1,21 +1,31 @@
 import random
 from email.policy import default
-
 from django.contrib.auth.hashers import check_password
 from rest_framework import serializers
 from django.core.cache import cache
 from .models import CustomUser  
 from django.db.models import Count
-
 import re
 
 
 
 
 class UserRegisterSerializer(serializers.Serializer):
-    phone = serializers.CharField(max_length=255, required=True, write_only=True)
-    password1 = serializers.CharField(max_length=255, required=True, write_only=True)
-    password2 = serializers.CharField(max_length=255, required=True, write_only=True)
+    phone = serializers.CharField(
+        max_length=255, 
+        required=True,
+        write_only=True
+        )
+    password1 = serializers.CharField(
+        max_length=255, 
+        required=True, 
+        write_only=True
+        )
+    password2 = serializers.CharField(
+        max_length=255, 
+        required=True, 
+        write_only=True
+        )
 
     def validate(self, attrs):
         """Ma'lumotlarni tekshirish"""
@@ -25,12 +35,8 @@ class UserRegisterSerializer(serializers.Serializer):
         if not self.is_valid_phone(phone):
             raise serializers.ValidationError({"phone": "Telefon raqam noto‘g‘ri formatda!"})
 
-
-
         user = CustomUser.objects.filter(phone=attrs['phone'], is_verified=True).first()
         
-
-
         if user:
             raise serializers.ValidationError({"phone": "Bu raqam bilan avval ro‘yxatdan o‘tilgan"})
 
@@ -180,6 +186,8 @@ class SetNewPasswordSerializer(serializers.Serializer):
         phone = attrs["phone"]
         code = attrs["code"]
 
+        
+
 
         cached_code = cache.get(phone)
         if not cached_code or cached_code != code:
@@ -221,6 +229,7 @@ class ChangePasswordInsideSerializer(serializers.Serializer):
         user = request.user
         cache_code = cache.get(f'change_{user.phone}')
 
+
         if attrs.get('code'):
 
             if not cache_code:
@@ -228,9 +237,11 @@ class ChangePasswordInsideSerializer(serializers.Serializer):
             print(attrs['code'], cache_code)
             if attrs['code'] != str(cache_code):
                 raise serializers.ValidationError({"code": "Kod xato kiritildi"})
-
+        
 
         if not check_password(attrs['old_password'], user.password):
+            print((attrs['old_password']))
+            print(user.password)
             raise serializers.ValidationError({"old_password": "Eski parol noto‘g‘ri!"})
 
         return attrs
@@ -238,15 +249,24 @@ class ChangePasswordInsideSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         user = self.context['request'].user
+        cache_key = f"change_{user.phone}"
+        cache_code = cache.get(cache_key)
+        if cache_code and not validated_data.get("code"):
+            raise serializers.ValidationError({"code": "Siz allaqachon kod olgansiz, uni kiriting."})
         
         if validated_data.get("code"):
             user.password = validated_data.get("new_password")
             user.save()
         else:
-            cache.set("change_" + user.phone, 12345, timeout=120)
+            code = self.generate_random_number()
+            print(code)
+            cache.set("change_" + user.phone, code, timeout=120)
             raise serializers.ValidationError({"code": "SMS kodni kiriting"})
 
         return validated_data
-
+    @staticmethod
+    def generate_random_number():
+        """Tasdiqlash kodi yaratish"""
+        return ''.join([str(random.randint(0, 9)) for _ in range(5)])
 
 
